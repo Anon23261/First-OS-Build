@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="2.0.0"
+VERSION="2.0.1"
 RELEASE_NAME="ghost-sec-v${VERSION}"
 BUILD_DIR="build"
 RELEASE_DIR="releases/${RELEASE_NAME}"
@@ -24,13 +24,13 @@ GHOST Sec v${VERSION}
 
 Security-focused operating system with integrated development environment.
 
-New Features in v2.0.0:
-- Integrated code compiler
-- Real-time code execution
-- Enhanced text editor with compilation support
-- Improved boot sequence with security branding
-- Memory usage optimization
-- Enhanced error handling
+Changes in v2.0.1:
+- Fixed memory allocation and deallocation
+- Fixed terminal dimensions handling
+- Improved filesystem error handling
+- Fixed keyboard input handling
+- Fixed type mismatches in editor
+- General code cleanup and optimization
 
 To run:
 1. Boot os.img in your preferred emulator

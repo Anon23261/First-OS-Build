@@ -91,6 +91,9 @@ int read_file(const char* filename, uint8_t* buffer, size_t* size) {
 }
 
 extern "C" char* read_file(const char* filename) {
+    if (!filename) {
+        return nullptr;
+    }
     // TODO: Implement actual filesystem reading
     // For now, return a dummy buffer
     static char dummy_buffer[1024] = "This is a dummy file content.\n";
@@ -98,6 +101,9 @@ extern "C" char* read_file(const char* filename) {
 }
 
 extern "C" int write_file(const char* filename, const char* data, size_t size) {
+    if (!filename || !data || size == 0) {
+        return -1;
+    }
     // TODO: Implement actual file writing
     // For now, just return success
     return 0;
