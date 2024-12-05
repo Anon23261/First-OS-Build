@@ -3,166 +3,233 @@
 #include "filesystem.h"
 #include "kernel.h"
 #include "string.h"
-
-extern "C" {
-    extern void terminal_clear(void);
-    extern void terminal_write_char(char c);
-    extern void terminal_write_string(const char* s);
-    extern void terminal_write(const char* data, size_t size);
-    extern void terminal_movecursor(size_t x, size_t y);
-    extern int snprintf(char* str, size_t size, const char* format, ...);
-    extern void* malloc(size_t size);
-    extern void* realloc(void* ptr, size_t size);
-    extern void free(void* ptr);
-    extern void* memset(void* s, int c, size_t n);
-    extern void* memmove(void* dest, const void* src, size_t n);
-    extern size_t strlen(const char* s);
-    extern char* strchr(const char* s, int c);
-    extern char* strdup(const char* s);
-}
+#include "compiler.h"
+#include <stddef.h>
 
 // Editor state
-EditorConfig E;
+static struct {
+    char* buffer;
+    size_t buffer_size;
+    size_t cursor_x;
+    size_t cursor_y;
+    const char* filename;
+    size_t screen_rows;
+    size_t screen_cols;
+    bool is_modified;
+} E;
 
 void editor_init() {
-    E.cursor_x = 0;
-    E.cursor_y = 0;
-    E.screen_rows = 24;  // Default terminal size
-    E.screen_cols = 80;
-    E.row_offset = 0;
-    E.col_offset = 0;
-    E.filename = nullptr;
     E.buffer = nullptr;
     E.buffer_size = 0;
-    memset(E.status_msg, 0, sizeof(E.status_msg));
-    E.status_msg_time = 0;
+    E.cursor_x = 0;
+    E.cursor_y = 0;
+    E.filename = nullptr;
+    terminal_get_size(&E.screen_rows, &E.screen_cols);
+    if (E.screen_rows == 0) E.screen_rows = 24;
+    if (E.screen_cols == 0) E.screen_cols = 80;
+    E.screen_rows--; // Make room for status line
+    E.is_modified = false;
+    compiler_init();
 }
 
-static size_t get_num_lines(const char* buffer) {
-    if (!buffer) return 0;
-    size_t count = 1;
-    for (size_t i = 0; i < strlen(buffer); i++) {
-        if (buffer[i] == '\n') count++;
+void editor_open(const char* filename) {
+    E.filename = filename;
+    char* data = read_file(filename);
+    if (data != nullptr) {
+        E.buffer = data;
+        E.buffer_size = strlen(data);
     }
-    return count;
 }
 
-static const char* get_line(const char* buffer, size_t line) {
-    if (!buffer) return nullptr;
-    const char* current = buffer;
-    for (size_t i = 0; i < line; i++) {
-        current = strchr(current, '\n');
-        if (!current) return nullptr;
-        current++;
+void editor_insert_char(char c) {
+    // Reallocate buffer if needed
+    size_t new_size = E.buffer_size + 2;  // +1 for new char, +1 for null terminator
+    char* new_buffer = (char*)malloc(new_size);
+    
+    if (new_buffer) {
+        // Copy existing content
+        if (E.buffer) {
+            memcpy(new_buffer, E.buffer, E.buffer_size);
+            free(E.buffer);
+        }
+        
+        // Insert new character and null terminator
+        new_buffer[E.buffer_size] = c;
+        new_buffer[E.buffer_size + 1] = '\0';
+        
+        E.buffer = new_buffer;
+        E.buffer_size = new_size - 1;  // Don't count null terminator in size
+        E.cursor_x++;
+        
+        if (E.cursor_x >= E.screen_cols) {
+            E.cursor_x = 0;
+            E.cursor_y++;
+        }
     }
-    return current;
+}
+
+void editor_delete_char() {
+    if (E.buffer_size > 0 && E.cursor_x > 0) {
+        // Create new buffer with one less character
+        size_t new_size = E.buffer_size;
+        char* new_buffer = (char*)malloc(new_size);
+        
+        if (new_buffer) {
+            // Copy content before cursor
+            memcpy(new_buffer, E.buffer, E.cursor_x - 1);
+            
+            // Copy content after cursor
+            if (E.cursor_x < E.buffer_size) {
+                memcpy(new_buffer + E.cursor_x - 1, 
+                       E.buffer + E.cursor_x, 
+                       E.buffer_size - E.cursor_x);
+            }
+            
+            free(E.buffer);
+            E.buffer = new_buffer;
+            E.buffer_size = new_size - 1;
+            E.cursor_x--;
+        }
+    }
 }
 
 void editor_refresh_screen() {
     terminal_clear();
     
-    for (size_t y = 0; y < E.screen_rows - 1; y++) {
-        size_t filerow = y + E.row_offset;
+    // Display buffer content
+    if (E.buffer) {
+        size_t pos = 0;
+        size_t row = 0;
         
-        if (filerow >= get_num_lines(E.buffer)) {
-            if (E.buffer_size == 0 && y == E.screen_rows / 3) {
-                char welcome[80];
-                int welcomelen = snprintf(welcome, sizeof(welcome),
-                    "Editor -- version 1.0.0");
-                if (welcomelen > (int)E.screen_cols) welcomelen = E.screen_cols;
-                
-                size_t padding = (E.screen_cols - welcomelen) / 2;
-                while (padding--) terminal_write_char(' ');
-                terminal_write_string(welcome);
-            } else {
-                terminal_write_char('~');
+        while (pos < E.buffer_size && row < E.screen_rows) {
+            // Find end of current line
+            size_t line_end = pos;
+            while (line_end < E.buffer_size && E.buffer[line_end] != '\n') {
+                line_end++;
             }
-        } else {
-            const char* line = get_line(E.buffer, filerow);
-            if (line) {
-                size_t len = 0;
-                const char* eol = strchr(line, '\n');
-                if (eol) len = eol - line;
-                else len = strlen(line);
-                
-                if (len > E.col_offset) {
-                    len -= E.col_offset;
-                    if (len > E.screen_cols) len = E.screen_cols;
-                    terminal_write(line + E.col_offset, len);
-                }
+            
+            // Calculate line length
+            size_t line_length = line_end - pos;
+            if (line_length > E.screen_cols) {
+                line_length = E.screen_cols;
             }
+            
+            // Write line to screen
+            terminal_write(E.buffer + pos, line_length);
+            terminal_write_string("\r\n");
+            
+            pos = line_end + 1;
+            row++;
         }
-        terminal_write_string("\r\n");
+    } else {
+        // Display welcome message
+        if (E.screen_rows > 2) {
+            char welcome[] = "Editor -- version 2.0.0";
+            size_t welcomelen = strlen(welcome);
+            if (welcomelen > E.screen_cols) welcomelen = E.screen_cols;
+            
+            size_t padding = (E.screen_cols - welcomelen) / 2;
+            if (padding) {
+                terminal_write_char('~');
+                padding--;
+            }
+            while (padding--) terminal_write_char(' ');
+            terminal_write_string(welcome);
+        }
     }
     
     // Status line
     char status[80];
-    int len = snprintf(status, sizeof(status), "%.20s - %zu lines",
-        E.filename ? E.filename : "[No Name]", get_num_lines(E.buffer));
+    int len = snprintf(status, sizeof(status), "%.20s - %zu bytes %d,%d",
+        E.filename ? E.filename : "[No Name]", 
+        E.buffer_size,
+        (int)E.cursor_y + 1,
+        (int)E.cursor_x + 1);
     
     if (len > (int)E.screen_cols) len = E.screen_cols;
+    
+    // Move to last line and print status
+    terminal_movecursor(0, E.screen_rows);
     terminal_write_string(status);
     
-    // Move cursor to current position
-    terminal_movecursor(E.cursor_x - E.col_offset, E.cursor_y - E.row_offset);
+    // Move cursor back to editing position
+    terminal_movecursor(E.cursor_x, E.cursor_y);
 }
 
-void editor_open(const char* filename) {
-    if (E.buffer) {
-        free(E.buffer);
-        E.buffer = nullptr;
-        E.buffer_size = 0;
+void editor_compile_and_run() {
+    if (!E.buffer || E.buffer_size == 0) {
+        terminal_write_string("\r\nNo code to compile!\r\n");
+        return;
     }
     
-    uint8_t* data = nullptr;
-    size_t size = 0;
-    if (read_file(filename, &data, &size) == 0 && data != nullptr) {
-        E.buffer = (char*)data;
-        E.buffer_size = size;
-        if (E.filename) free(E.filename);
-        E.filename = strdup(filename);
-    }
-}
-
-void editor_insert_char(char c) {
-    if (!E.buffer) {
-        E.buffer = (char*)malloc(1);
-        if (!E.buffer) return;
-        E.buffer_size = 0;
+    // Compile the code
+    CompileResult result = compile_code(E.buffer, E.buffer_size);
+    if (!result.success) {
+        terminal_write_string("\r\nCompilation failed: ");
+        terminal_write_string(result.error_message);
+        terminal_write_string("\r\n");
+        return;
     }
     
-    char* new_buffer = (char*)realloc(E.buffer, E.buffer_size + 2);
-    if (!new_buffer) return;
-    E.buffer = new_buffer;
+    // Execute the compiled code
+    terminal_write_string("\r\nCompilation successful. Running...\r\n");
+    if (!execute_binary(result.binary, result.binary_size)) {
+        terminal_write_string("Execution failed!\r\n");
+    }
     
-    memmove(&E.buffer[E.cursor_x + 1], &E.buffer[E.cursor_x], E.buffer_size - E.cursor_x);
-    E.buffer[E.cursor_x] = c;
-    E.buffer_size++;
-    E.cursor_x++;
-    E.buffer[E.buffer_size] = '\0';
+    // Clean up
+    if (result.binary) {
+        free(result.binary);
+    }
 }
 
 void editor_process_keypress() {
-    int c = keyboard_getchar();
-    if (!c) return;
-
+    char c = keyboard_getchar();
+    if (!c) return;  // No character available
+    
     switch (c) {
+        case '\r':  // Enter key
+        case '\n':
+            editor_insert_char('\n');
+            E.cursor_x = 0;
+            E.cursor_y++;
+            E.is_modified = true;
+            break;
+            
+        case 0x08:  // Backspace
+            editor_delete_char();
+            E.is_modified = true;
+            break;
+            
         case 17:  // Ctrl-Q
+            if (E.is_modified) {
+                terminal_write_string("\r\nWarning: Unsaved changes! Press Ctrl-Q again to quit.\r\n");
+                E.is_modified = false;
+                break;
+            }
             terminal_clear();
+            terminal_write_string("Exiting editor...\n");
             while(1) {
                 asm volatile("hlt");
             }
             break;
             
         case 19:  // Ctrl-S
-            if (E.filename) {
-                write_file(E.filename, (uint8_t*)E.buffer, E.buffer_size);
+            if (E.filename && E.buffer) {
+                write_file(E.filename, E.buffer, E.buffer_size);
+                terminal_write_string("\r\nFile saved.\r\n");
+                E.is_modified = false;
             }
+            break;
+            
+        case 18:  // Ctrl-R
+            editor_compile_and_run();
             break;
             
         default:
             if (c >= 32 && c < 127) {
-                editor_insert_char((char)c);
+                editor_insert_char(c);
+                E.is_modified = true;
             }
             break;
     }

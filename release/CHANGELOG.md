@@ -1,6 +1,24 @@
 # Changelog
 
-## [1.1.1] - Latest Release
+## [2.0.0] - Latest Release
+
+### Major Improvements
+- Complete rewrite of the text editor with improved stability
+- Enhanced memory management with proper allocation/deallocation
+- Improved keyboard input handling with better special key support
+- New status line showing file info and cursor position
+- Better screen refresh logic with proper cursor positioning
+- Added save confirmation messages
+- Fixed all compilation errors and undefined references
+
+### Technical Improvements
+- Fixed interrupt handling and initialization
+- Proper implementation of keyboard buffer
+- Better memory management in editor operations
+- Improved error handling throughout the system
+- Fixed linking issues with C/C++ mixed code
+
+## [1.1.1] - Previous Release
 
 ### Improvements
 - Enhanced keyboard handling with better special key support

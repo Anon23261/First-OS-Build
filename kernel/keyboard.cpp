@@ -127,13 +127,15 @@ extern "C" void keyboard_handler(struct registers* regs) {
     }
 }
 
-extern "C" char keyboard_getchar() {
-    if (buffer_start == buffer_end) {
-        return 0; // No character available
+extern "C" {
+    char keyboard_getchar() {
+        if (buffer_start == buffer_end) {
+            return 0; // No character available
+        }
+        char c = keyboard_buffer[buffer_start];
+        buffer_start = (buffer_start + 1) % KEYBOARD_BUFFER_SIZE;
+        return c;
     }
-    char c = keyboard_buffer[buffer_start];
-    buffer_start = (buffer_start + 1) % KEYBOARD_BUFFER_SIZE;
-    return c;
 }
 
 bool keyboard_available() {

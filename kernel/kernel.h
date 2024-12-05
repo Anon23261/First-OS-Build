@@ -58,6 +58,8 @@ void terminal_new_line(void);
 void terminal_backspace(void);
 void terminal_get_size(size_t* rows, size_t* cols);
 void terminal_movecursor(size_t x, size_t y);
+void terminal_get_cursor(size_t* x, size_t* y);
+void terminal_set_cursor(size_t x, size_t y);
 uint32_t kernel_get_ticks(void);
 void interrupts_init(void);
 

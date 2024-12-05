@@ -1,148 +1,128 @@
 #include "memory.h"
-#include "kernel.h"
+#include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
-// Memory management globals
-static struct memory_block* heap_start = nullptr;
-static uint32_t total_memory = 0;
-static uint32_t free_memory = 0;
+// Simple memory allocator implementation
+#define HEAP_START 0x100000
+#define HEAP_SIZE  0x100000
 
-// Helper functions
-static void* align_address(void* addr, size_t alignment) {
-    return (void*)(((uintptr_t)addr + (alignment - 1)) & ~(alignment - 1));
+struct block_meta {
+    size_t size;
+    struct block_meta* next;
+    bool is_free;
+};
+
+static struct block_meta* heap_start = nullptr;
+
+void memory_init() {
+    // Initialize the heap
+    heap_start = (struct block_meta*)HEAP_START;
+    heap_start->size = HEAP_SIZE - sizeof(struct block_meta);
+    heap_start->next = nullptr;
+    heap_start->is_free = true;
 }
 
-static struct memory_block* find_free_block(size_t size) {
-    struct memory_block* current = heap_start;
-    while (current) {
-        if (current->is_free && current->size >= size) {
-            return current;
-        }
+static struct block_meta* find_free_block(struct block_meta** last, size_t size) {
+    struct block_meta* current = heap_start;
+    while (current && !(current->is_free && current->size >= size)) {
+        *last = current;
         current = current->next;
     }
-    return nullptr;
+    return current;
 }
 
-static void merge_free_blocks(struct memory_block* block) {
-    // Merge with next block if it's free
-    while (block->next && block->next->is_free) {
-        block->size += block->next->size + sizeof(struct memory_block);
-        block->next = block->next->next;
-        if (block->next) {
-            block->next->prev = block;
-        }
-    }
-    
-    // Merge with previous block if it's free
-    while (block->prev && block->prev->is_free) {
-        block = block->prev;
-        block->size += block->next->size + sizeof(struct memory_block);
-        block->next = block->next->next;
-        if (block->next) {
-            block->next->prev = block;
-        }
-    }
+static struct block_meta* request_space(struct block_meta* last, size_t size) {
+    struct block_meta* block;
+    block = last->next = (struct block_meta*)((char*)last + sizeof(struct block_meta) + last->size);
+    block->size = size;
+    block->next = nullptr;
+    block->is_free = false;
+    return block;
 }
 
-bool memory_initialize(const multiboot_info_t* mbi) {
-    if (!mbi) return false;
-
-    // Get memory information from multiboot
-    if (!(mbi->flags & MULTIBOOT_INFO_MEMORY)) {
-        return false;
-    }
-
-    total_memory = (mbi->mem_lower + mbi->mem_upper) * 1024;  // Convert KB to bytes
-    
-    // Initialize heap
-    // Start after kernel (1MB + kernel size, aligned to 4KB)
-    uintptr_t heap_addr = 0x100000;  // 1MB
-    heap_addr = (uintptr_t)align_address((void*)heap_addr, 4096);
-    
-    heap_start = (struct memory_block*)heap_addr;
-    heap_start->size = total_memory - heap_addr - sizeof(struct memory_block);
-    heap_start->is_free = true;
-    heap_start->next = nullptr;
-    heap_start->prev = nullptr;
-    
-    free_memory = heap_start->size;
-    
-    return true;
-}
-
-void* memory_allocate(size_t size) {
+extern "C" void* malloc(size_t size) {
     if (size == 0) return nullptr;
     
-    // Align size to 8 bytes
-    size = (size + 7) & ~7;
+    struct block_meta* block;
     
-    struct memory_block* block = find_free_block(size);
-    if (!block) return nullptr;
-    
-    // Split block if it's too large
-    if (block->size > size + sizeof(struct memory_block) + 8) {
-        struct memory_block* new_block = (struct memory_block*)((char*)block + sizeof(struct memory_block) + size);
-        new_block->size = block->size - size - sizeof(struct memory_block);
-        new_block->is_free = true;
-        new_block->next = block->next;
-        new_block->prev = block;
-        
-        if (block->next) {
-            block->next->prev = new_block;
-        }
-        
-        block->next = new_block;
-        block->size = size;
+    // First call to malloc
+    if (heap_start == nullptr) {
+        memory_init();
     }
     
-    block->is_free = false;
-    free_memory -= block->size + sizeof(struct memory_block);
+    struct block_meta* last = heap_start;
+    block = find_free_block(&last, size);
     
-    return (void*)((char*)block + sizeof(struct memory_block));
+    if (block == nullptr) {
+        // No free block found - allocate new one
+        block = request_space(last, size);
+        if (block == nullptr) {
+            return nullptr;
+        }
+    } else {
+        // Found free block
+        block->is_free = false;
+    }
+    
+    return (void*)(block + 1);
 }
 
-void memory_free(void* ptr) {
-    if (!ptr) return;
+extern "C" void free(void* ptr) {
+    if (ptr == nullptr) return;
     
-    struct memory_block* block = (struct memory_block*)((char*)ptr - sizeof(struct memory_block));
-    block->is_free = true;
-    free_memory += block->size + sizeof(struct memory_block);
+    // Get the block metadata
+    struct block_meta* block_ptr = (struct block_meta*)ptr - 1;
+    block_ptr->is_free = true;
     
-    merge_free_blocks(block);
+    // Simple coalescing of adjacent free blocks
+    struct block_meta* current = heap_start;
+    while (current && current->next) {
+        if (current->is_free && current->next->is_free) {
+            current->size += sizeof(struct block_meta) + current->next->size;
+            current->next = current->next->next;
+        } else {
+            current = current->next;
+        }
+    }
 }
 
-void* memory_reallocate(void* ptr, size_t size) {
-    if (!ptr) return memory_allocate(size);
+extern "C" void* realloc(void* ptr, size_t size) {
+    if (ptr == nullptr) {
+        return malloc(size);
+    }
+    
     if (size == 0) {
-        memory_free(ptr);
+        free(ptr);
         return nullptr;
     }
     
-    struct memory_block* block = (struct memory_block*)((char*)ptr - sizeof(struct memory_block));
-    
-    // If the current block is big enough, just return it
-    if (block->size >= size) {
-        return ptr;
+    void* new_ptr = malloc(size);
+    if (new_ptr == nullptr) {
+        return nullptr;
     }
     
-    // Allocate new block
-    void* new_ptr = memory_allocate(size);
-    if (!new_ptr) return nullptr;
-    
     // Copy old data
-    memcpy(new_ptr, ptr, block->size);
+    struct block_meta* block_ptr = (struct block_meta*)ptr - 1;
+    size_t copy_size = block_ptr->size < size ? block_ptr->size : size;
+    memcpy(new_ptr, ptr, copy_size);
     
-    // Free old block
-    memory_free(ptr);
-    
+    free(ptr);
     return new_ptr;
 }
 
-uint32_t memory_get_total(void) {
-    return total_memory;
+extern "C" void* memcpy(void* dest, const void* src, size_t n) {
+    char* d = (char*)dest;
+    const char* s = (const char*)src;
+    while (n--) *d++ = *s++;
+    return dest;
 }
 
-uint32_t memory_get_free(void) {
-    return free_memory;
+size_t memory_get_total() {
+    // TODO: Implement actual memory detection
+    return 64 * 1024 * 1024; // Return 64MB for now
+}
+
+size_t memory_get_free() {
+    // TODO: Implement actual free memory tracking
+    return 32 * 1024 * 1024; // Return 32MB for now
 }

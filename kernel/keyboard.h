@@ -37,7 +37,7 @@ extern "C" {
 // Function declarations
 void keyboard_init(void);
 void keyboard_handler(struct registers* regs);
-extern "C" char keyboard_getchar(void);
+char keyboard_getchar(void);
 bool keyboard_available(void);
 void keyboard_clear_buffer(void);
 

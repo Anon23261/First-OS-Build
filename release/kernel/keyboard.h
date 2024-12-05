@@ -2,6 +2,8 @@
 #define KEYBOARD_H
 
 #include <stdint.h>
+#include <stdbool.h>
+#include "interrupts.h"
 
 // Buffer size
 #define KEYBOARD_BUFFER_SIZE 256
@@ -28,11 +30,19 @@
 #define KEY_PGDN      0x51
 #define KEY_DEL       0x53
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Function declarations
-void keyboard_init();
-void keyboard_handler(uint8_t scancode);
-char keyboard_getchar();
-bool keyboard_available();
-void keyboard_clear_buffer();
+void keyboard_init(void);
+void keyboard_handler(struct registers* regs);
+char keyboard_getchar(void);
+bool keyboard_available(void);
+void keyboard_clear_buffer(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // KEYBOARD_H

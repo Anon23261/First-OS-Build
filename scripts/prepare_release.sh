@@ -1,35 +1,51 @@
 #!/bin/bash
 
-VERSION="1.1.1"
-RELEASE_DIR="release"
-FINAL_PACKAGE="custom-os-v${VERSION}.tar.gz"
+VERSION="2.0.0"
+RELEASE_NAME="ghost-sec-v${VERSION}"
+BUILD_DIR="build"
+RELEASE_DIR="releases/${RELEASE_NAME}"
 
-# Create release directory
-rm -rf ${RELEASE_DIR}
+# Create release directory structure
 mkdir -p ${RELEASE_DIR}
 
+# Build the project
+echo "Building GHOST Sec v${VERSION}..."
+make clean
+make
+
 # Copy necessary files
-cp -r kernel ${RELEASE_DIR}/
-[ -d docs ] && cp -r docs ${RELEASE_DIR}/
-[ -d tools ] && cp -r tools ${RELEASE_DIR}/
-[ -d examples ] && cp -r examples ${RELEASE_DIR}/
+cp ${BUILD_DIR}/kernel.bin ${RELEASE_DIR}/
+cp ${BUILD_DIR}/os.img ${RELEASE_DIR}/
 
-# Copy documentation files if they exist
-for file in VERSION CHANGELOG.md RELEASE_NOTES.md README.md LICENSE; do
-    [ -f "$file" ] && cp "$file" ${RELEASE_DIR}/
-done
+# Create release info
+cat > ${RELEASE_DIR}/README.txt << EOL
+GHOST Sec v${VERSION}
+===================
 
-# Create the release package
-tar czf ${FINAL_PACKAGE} ${RELEASE_DIR}
+Security-focused operating system with integrated development environment.
 
-echo "Release package created: ${FINAL_PACKAGE}"
-echo "Version: ${VERSION}"
+New Features in v2.0.0:
+- Integrated code compiler
+- Real-time code execution
+- Enhanced text editor with compilation support
+- Improved boot sequence with security branding
+- Memory usage optimization
+- Enhanced error handling
 
-# Verify the package
-if [ -f "${FINAL_PACKAGE}" ]; then
-    echo "Package creation successful!"
-    echo "Size: $(du -h ${FINAL_PACKAGE} | cut -f1)"
-else
-    echo "Error: Package creation failed!"
-    exit 1
-fi
+To run:
+1. Boot os.img in your preferred emulator
+2. Use Ctrl+R to compile and run code
+3. Use Ctrl+S to save files
+4. Use Ctrl+Q to exit editor
+
+For support and updates, contact the GHOST Sec team.
+EOL
+
+# Create checksum
+cd ${RELEASE_DIR}
+sha256sum kernel.bin os.img README.txt > SHA256SUMS
+
+echo "Release v${VERSION} prepared successfully in ${RELEASE_DIR}"
+echo "Don't forget to tag the release in git:"
+echo "git tag -a v${VERSION} -m \"GHOST Sec v${VERSION}\""
+echo "git push origin v${VERSION}"

@@ -3,6 +3,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "io.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // VGA colors
 enum vga_color {
@@ -36,6 +41,8 @@ typedef struct {
     uint8_t terminal_color;
     uint16_t* terminal_buffer;
     bool is_initialized;
+    uint32_t total_memory;
+    uint32_t free_memory;
 } KernelState;
 
 // Function declarations
@@ -50,8 +57,22 @@ void terminal_write_string(const char* data);
 void terminal_new_line(void);
 void terminal_backspace(void);
 void terminal_get_size(size_t* rows, size_t* cols);
+void terminal_movecursor(size_t x, size_t y);
+void terminal_get_cursor(size_t* x, size_t* y);
+void terminal_set_cursor(size_t x, size_t y);
 uint32_t kernel_get_ticks(void);
+void interrupts_init(void);
 
-[[noreturn]] void kernel_panic(const char* message);
+// Make kernel state accessible
+extern KernelState kernel_state;
+
+#ifdef __cplusplus
+[[noreturn]]
+#endif
+void kernel_panic(const char* message);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif // KERNEL_H

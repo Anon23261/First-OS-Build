@@ -47,7 +47,7 @@ void isr_handler(struct registers* regs);
 void irq_handler(struct registers* regs);
 
 // Initialization
-void interrupts_init();
+extern "C" void interrupts_init();
 
 #ifdef __cplusplus
 }

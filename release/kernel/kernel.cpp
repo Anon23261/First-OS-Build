@@ -1,68 +1,25 @@
 #include "kernel.h"
-#include "interrupts.h"
-#include "keyboard.h"
-#include "memory.h"
-#include "string.h"
-#include "filesystem.h"
 #include "editor.h"
-#include <stdint.h>
+#include "keyboard.h"
+#include "filesystem.h"
+#include "memory.h"
+#include "interrupts.h"
+#include <stdarg.h>
 
-// VGA text mode constants
-#define VGA_WIDTH 80
-#define VGA_HEIGHT 25
+extern "C" {
+    extern int sprintf(char* str, const char* format, ...);
+    extern void* memset(void* s, int c, size_t n);
+}
 
-// Kernel state
-struct KernelState {
-    bool vga_initialized;
-    bool keyboard_initialized;
-    bool filesystem_initialized;
-    bool editor_initialized;
-    bool memory_initialized;
-    bool interrupts_initialized;
-    uint16_t* terminal_buffer;
-    size_t terminal_row;
-    size_t terminal_column;
-    uint8_t terminal_color;
-    const multiboot_info_t* multiboot_info;
-    uint32_t total_memory;
-    uint32_t free_memory;
-    bool is_initialized;
-};
-
+// Global kernel state
 KernelState kernel_state = {
-    .vga_initialized = false,
-    .keyboard_initialized = false,
-    .filesystem_initialized = false,
-    .editor_initialized = false,
-    .memory_initialized = false,
-    .interrupts_initialized = false,
     .terminal_row = 0,
     .terminal_column = 0,
     .terminal_color = 0,
     .terminal_buffer = nullptr,
+    .is_initialized = false,
     .total_memory = 0,
-    .free_memory = 0,
-    .is_initialized = false
-};
-
-// VGA color enum
-enum vga_color {
-    VGA_COLOR_BLACK = 0,
-    VGA_COLOR_BLUE = 1,
-    VGA_COLOR_GREEN = 2,
-    VGA_COLOR_CYAN = 3,
-    VGA_COLOR_RED = 4,
-    VGA_COLOR_MAGENTA = 5,
-    VGA_COLOR_BROWN = 6,
-    VGA_COLOR_LIGHT_GREY = 7,
-    VGA_COLOR_DARK_GREY = 8,
-    VGA_COLOR_LIGHT_BLUE = 9,
-    VGA_COLOR_LIGHT_GREEN = 10,
-    VGA_COLOR_LIGHT_CYAN = 11,
-    VGA_COLOR_LIGHT_RED = 12,
-    VGA_COLOR_LIGHT_MAGENTA = 13,
-    VGA_COLOR_LIGHT_BROWN = 14,
-    VGA_COLOR_WHITE = 15,
+    .free_memory = 0
 };
 
 // Terminal functions
@@ -80,7 +37,7 @@ void terminal_init() {
     kernel_state.terminal_row = 0;
     kernel_state.terminal_column = 0;
     kernel_state.terminal_color = make_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
-    kernel_state.terminal_buffer = (uint16_t*) 0xB8000;
+    kernel_state.terminal_buffer = (uint16_t*) VGA_MEMORY;
     kernel_state.is_initialized = true;
 
     terminal_clear();
@@ -93,6 +50,14 @@ void terminal_clear() {
             kernel_state.terminal_buffer[index] = make_vgaentry(' ', kernel_state.terminal_color);
         }
     }
+}
+
+void terminal_movecursor(size_t x, size_t y) {
+    uint16_t pos = y * VGA_WIDTH + x;
+    outb(0x3D4, 14);
+    outb(0x3D5, pos >> 8);
+    outb(0x3D4, 15);
+    outb(0x3D5, pos & 0xFF);
 }
 
 void terminal_set_color(enum vga_color fg, enum vga_color bg) {
@@ -111,6 +76,8 @@ void terminal_write_char(char c) {
     if (++kernel_state.terminal_column == VGA_WIDTH) {
         terminal_new_line();
     }
+    
+    terminal_movecursor(kernel_state.terminal_column, kernel_state.terminal_row);
 }
 
 void terminal_write(const char* data, size_t size) {
@@ -143,6 +110,7 @@ void terminal_new_line() {
             kernel_state.terminal_buffer[index] = make_vgaentry(' ', kernel_state.terminal_color);
         }
     }
+    terminal_movecursor(kernel_state.terminal_column, kernel_state.terminal_row);
 }
 
 void terminal_backspace() {
@@ -150,6 +118,7 @@ void terminal_backspace() {
         kernel_state.terminal_column--;
         const size_t index = kernel_state.terminal_row * VGA_WIDTH + kernel_state.terminal_column;
         kernel_state.terminal_buffer[index] = make_vgaentry(' ', kernel_state.terminal_color);
+        terminal_movecursor(kernel_state.terminal_column, kernel_state.terminal_row);
     }
 }
 
@@ -158,131 +127,50 @@ void terminal_get_size(size_t* rows, size_t* cols) {
     *cols = VGA_WIDTH;
 }
 
-// Timer interrupt handler
-static void timer_handler(registers_t* regs __attribute__((unused))) {
-    static uint32_t tick = 0;
-    tick++;
-    
-    // Update system time every second (assuming 100Hz timer)
-    if (tick % 100 == 0) {
-        // TODO: Update system time
-    }
-}
-
-// Initialize all subsystems
-bool init_subsystems(const multiboot_info_t* mbi) {
+// Kernel initialization
+extern "C" void kernel_init() {
     // Initialize memory management
-    if (!memory_initialize(mbi)) {
-        return false;
-    }
-    kernel_state.memory_initialized = true;
+    memory_init();
     kernel_state.total_memory = memory_get_total();
     kernel_state.free_memory = memory_get_free();
     
-    // Initialize terminal first for error reporting
+    // Initialize terminal
     terminal_init();
-    kernel_state.vga_initialized = true;
     
-    // Initialize interrupt system
-    if (!interrupts_initialize()) {
-        return false;
-    }
-    kernel_state.interrupts_initialized = true;
-    
-    // Register timer interrupt handler
-    register_interrupt_handler(IRQ0, timer_handler);
-    
-    // Initialize keyboard
-    keyboard_initialize();
-    kernel_state.keyboard_initialized = true;
-    
-    // Initialize filesystem
-    if (!filesystem_initialize()) {
-        return false;
-    }
-    kernel_state.filesystem_initialized = true;
-    
-    // Initialize text editor
-    if (!editor_initialize()) {
-        return false;
-    }
-    kernel_state.editor_initialized = true;
-    
-    return true;
+    // Initialize other subsystems
+    keyboard_init();
+    filesystem_init();
+    interrupts_init();
+    editor_init();
 }
 
-// Kernel panic handler
-[[noreturn]] void kernel_panic(const char* message) {
-    disable_interrupts();
+// Kernel main function
+extern "C" void kernel_main() {
+    kernel_init();
     
-    // Set error color scheme
-    kernel_state.terminal_color = make_color(VGA_COLOR_WHITE, VGA_COLOR_RED);
-    
-    // Clear screen
-    for (size_t y = 0; y < VGA_HEIGHT; y++) {
-        for (size_t x = 0; x < VGA_WIDTH; x++) {
-            const size_t index = y * VGA_WIDTH + x;
-            kernel_state.terminal_buffer[index] = make_vgaentry(' ', kernel_state.terminal_color);
-        }
+    terminal_write_string("Custom OS v2.0.0\n");
+    terminal_write_string("---------------\n");
+    terminal_write_string("Memory: ");
+    char memstr[32];
+    sprintf(memstr, "%uKB total, %uKB free\n", 
+            kernel_state.total_memory / 1024,
+            kernel_state.free_memory / 1024);
+    terminal_write_string(memstr);
+    terminal_write_string("\nType 'help' for available commands.\n\n");
+
+    while (true) {
+        editor_process_keypress();
     }
-    
-    // Reset cursor position
-    kernel_state.terminal_row = 0;
-    kernel_state.terminal_column = 0;
-    
-    // Print panic message
-    terminal_write_string("KERNEL PANIC: ");
+}
+
+// Kernel panic function
+extern "C" [[noreturn]] void kernel_panic(const char* message) {
+    terminal_set_color(VGA_COLOR_RED, VGA_COLOR_BLACK);
+    terminal_write_string("\nKERNEL PANIC: ");
     terminal_write_string(message);
-    terminal_write_string("\n\nSystem halted.");
+    terminal_write_string("\nSystem halted.\n");
     
-    // Halt the system
     while (true) {
-        asm volatile("hlt");
-    }
-}
-
-// Kernel entry point
-extern "C" void kernel_main(multiboot_info_t* mbi) {
-    // Store multiboot info
-    kernel_state.multiboot_info = mbi;
-
-    // Check multiboot magic
-    if (mbi->magic != MULTIBOOT_BOOTLOADER_MAGIC) {
-        kernel_panic("Invalid multiboot magic number");
-    }
-
-    // Initialize all subsystems
-    if (!init_subsystems(mbi)) {
-        kernel_panic("Failed to initialize kernel subsystems");
-    }
-
-    // Print welcome message
-    terminal_write_string("\nMiniOS booted successfully!\n");
-    
-    char buf[256];
-    snprintf(buf, sizeof(buf), 
-             "\nSystem Information:\n"
-             "Total Memory: %u KB\n"
-             "Free Memory: %u KB\n",
-             kernel_state.total_memory / 1024,
-             kernel_state.free_memory / 1024);
-    terminal_write_string(buf);
-
-    // Enable interrupts
-    enable_interrupts();
-
-    // Main kernel loop
-    while (true) {
-        if (keyboard_has_key()) {
-            char c = keyboard_get_key();
-            if (kernel_state.editor_initialized) {
-                editor_handle_input(c);
-            } else {
-                terminal_write_char(c);
-            }
-        }
-
-        // Give CPU some rest
-        asm volatile("hlt");
+        asm volatile("cli; hlt");
     }
 }

@@ -1,143 +1,134 @@
 #include "filesystem.h"
 #include "kernel.h"
-#include <string.h>
-#include <stdio.h>
+#include "string.h"
+#include <stddef.h>
 
-static File files[MAX_FILES];
+// File system storage
+static struct File files[MAX_FILES];
+static size_t num_files = 0;
 
-static struct {
-    size_t used_files;
-    size_t total_size;
-} fs_status;
-
-void init_filesystem() {
-    fs_status.used_files = 0;
-    fs_status.total_size = 0;
-    
-    for (int i = 0; i < MAX_FILES; i++) {
+void filesystem_init() {
+    // Initialize all file slots as unused
+    for (size_t i = 0; i < MAX_FILES; i++) {
         files[i].used = false;
-        files[i].size = 0;
-        memset(files[i].name, 0, MAX_FILENAME_LENGTH);
-        memset(files[i].data, 0, MAX_FILE_SIZE);
     }
+    num_files = 0;
 }
 
 int create_file(const char* filename) {
-    if (!filename || strlen(filename) == 0) {
-        return -1;  // Invalid filename
+    if (!filename || strlen(filename) >= MAX_FILENAME_LENGTH) {
+        return -1;
     }
-    
+
     // Check if file already exists
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (size_t i = 0; i < MAX_FILES; i++) {
         if (files[i].used && strcmp(files[i].name, filename) == 0) {
-            return -2;  // File already exists
+            return -1;
         }
     }
-    
+
     // Find free slot
-    int index = -1;
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (size_t i = 0; i < MAX_FILES; i++) {
         if (!files[i].used) {
-            index = i;
-            break;
+            strncpy(files[i].name, filename, MAX_FILENAME_LENGTH - 1);
+            files[i].name[MAX_FILENAME_LENGTH - 1] = '\0';
+            files[i].size = 0;
+            files[i].used = true;
+            num_files++;
+            return 0;
         }
     }
-    
-    if (index == -1) {
-        return -3; // No free slots
-    }
-    
-    strncpy(files[index].name, filename, MAX_FILENAME_LENGTH-1);
-    files[index].name[MAX_FILENAME_LENGTH-1] = '\0';
-    files[index].size = 0;
-    files[index].used = true;
-    fs_status.used_files++;
-    
-    return index;
+
+    return -1;  // No free slots
 }
 
 int write_file(const char* filename, const uint8_t* data, size_t size) {
-    if (!filename || !data) {
-        return -1;  // Invalid parameters
+    if (!filename || !data || size > MAX_FILE_SIZE) {
+        return -1;
     }
-    
-    if (size > MAX_FILE_SIZE) {
-        return -2;  // File too large
-    }
-    
+
     // Find file
-    int index = -1;
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (size_t i = 0; i < MAX_FILES; i++) {
         if (files[i].used && strcmp(files[i].name, filename) == 0) {
-            index = i;
-            break;
+            memcpy(files[i].data, data, size);
+            files[i].size = size;
+            return 0;
         }
     }
-    
-    if (index == -1) {
-        index = create_file(filename);
-        if (index < 0) {
-            return -3;  // Couldn't create file
+
+    // File not found, try to create it
+    if (create_file(filename) != 0) {
+        return -1;
+    }
+
+    // Write to newly created file
+    for (size_t i = 0; i < MAX_FILES; i++) {
+        if (files[i].used && strcmp(files[i].name, filename) == 0) {
+            memcpy(files[i].data, data, size);
+            files[i].size = size;
+            return 0;
         }
     }
-    
-    fs_status.total_size -= files[index].size;  // Subtract old size
-    memcpy(files[index].data, data, size);
-    files[index].size = size;
-    fs_status.total_size += size;  // Add new size
-    
-    return 0;  // Success
+
+    return -1;
 }
 
 int read_file(const char* filename, uint8_t* buffer, size_t* size) {
     if (!filename || !buffer || !size) {
-        return -1;  // Invalid parameters
+        return -1;
     }
-    
+
     // Find file
-    int index = -1;
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (size_t i = 0; i < MAX_FILES; i++) {
         if (files[i].used && strcmp(files[i].name, filename) == 0) {
-            index = i;
-            break;
+            memcpy(buffer, files[i].data, files[i].size);
+            *size = files[i].size;
+            return 0;
         }
     }
-    
-    if (index == -1) {
-        return -2;  // File not found
-    }
-    
-    *size = files[index].size;
-    memcpy(buffer, files[index].data, files[index].size);
-    
-    return 0;  // Success
+
+    return -1;  // File not found
+}
+
+extern "C" char* read_file(const char* filename) {
+    // TODO: Implement actual filesystem reading
+    // For now, return a dummy buffer
+    static char dummy_buffer[1024] = "This is a dummy file content.\n";
+    return dummy_buffer;
+}
+
+extern "C" int write_file(const char* filename, const char* data, size_t size) {
+    // TODO: Implement actual file writing
+    // For now, just return success
+    return 0;
 }
 
 void list_files() {
-    terminal_writestring("Files:\n");
-    for (int i = 0; i < MAX_FILES; i++) {
+    terminal_write_string("Files:\n");
+    
+    if (num_files == 0) {
+        terminal_write_string("  No files\n");
+        return;
+    }
+
+    for (size_t i = 0; i < MAX_FILES; i++) {
         if (files[i].used) {
-            char info[80];
-            snprintf(info, sizeof(info), "%s - %d bytes\n", 
-                    files[i].name, files[i].size);
-            terminal_writestring(info);
+            char info[MAX_FILENAME_LENGTH + 32];
+            snprintf(info, sizeof(info), "  %s (%u bytes)\n", 
+                    files[i].name, (unsigned)files[i].size);
+            terminal_write_string(info);
         }
     }
-    
-    char status[80];
-    snprintf(status, sizeof(status), "\nTotal: %d files, %d bytes used\n",
-             fs_status.used_files, fs_status.total_size);
-    terminal_writestring(status);
 }
 
 bool file_exists(const char* filename) {
     if (!filename) return false;
-    
-    for (int i = 0; i < MAX_FILES; i++) {
+
+    for (size_t i = 0; i < MAX_FILES; i++) {
         if (files[i].used && strcmp(files[i].name, filename) == 0) {
             return true;
         }
     }
-    
+
     return false;
 }

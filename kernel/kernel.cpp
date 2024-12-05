@@ -4,7 +4,8 @@
 #include "filesystem.h"
 #include "memory.h"
 #include "interrupts.h"
-#include <stdio.h>
+#include "compiler.h"
+#include <stdarg.h>
 
 extern "C" {
     extern int sprintf(char* str, const char* format, ...);
@@ -141,24 +142,48 @@ extern "C" void kernel_init() {
     keyboard_init();
     filesystem_init();
     interrupts_init();
+    compiler_init();
     editor_init();
 }
 
 // Kernel main function
 extern "C" void kernel_main() {
+    terminal_clear();
+    terminal_write_string("GHOST");
+    for (int i = 0; i < 3; i++) {
+        terminal_write_string(".");
+        // Add a small delay
+        for (volatile int j = 0; j < 10000000; j++) {}
+    }
+    terminal_write_string("\r\n");
+    
+    // Initialize kernel
     kernel_init();
     
-    terminal_write_string("Custom OS v1.1.1\n");
-    terminal_write_string("---------------\n");
+    // Show main banner
+    terminal_clear();
+    terminal_write_string("   ______  __  __  ____    _____ _______ \n");
+    terminal_write_string("  / ____ \\|  ||  |/ __ \\  / ____|__   __|\n");
+    terminal_write_string(" | |  | | |  ||  | |  | || (___    | |   \n");
+    terminal_write_string(" | |  | | |  ||  | |  | | \\___ \\   | |   \n");
+    terminal_write_string(" | |__| | |  ||  | |__| | ____) |  | |   \n");
+    terminal_write_string("  \\___\\_\\ |__||__| \\____/ |_____/   |_|   \n");
+    terminal_write_string("            Security Edition v2.0.0        \n");
+    terminal_write_string("----------------------------------------\n");
+    
+    // Show system info
     terminal_write_string("Memory: ");
     char memstr[32];
-    sprintf(memstr, "%uKB total, %uKB free\n", 
-            kernel_state.total_memory / 1024,
-            kernel_state.free_memory / 1024);
+    int_to_string(kernel_state.total_memory / 1024, memstr);
     terminal_write_string(memstr);
-    terminal_write_string("\nType 'help' for available commands.\n\n");
-
-    while (true) {
+    terminal_write_string(" KB total, ");
+    int_to_string(kernel_state.free_memory / 1024, memstr);
+    terminal_write_string(memstr);
+    terminal_write_string(" KB free\n");
+    
+    // Start editor
+    editor_init();
+    while(1) {
         editor_process_keypress();
     }
 }
