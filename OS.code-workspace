@@ -1,0 +1,91 @@
+{
+    "folders": [
+        {
+            "path": ".",
+            "name": "OS Project"
+        }
+    ],
+    "settings": {
+        "files.associations": {
+            "*.h": "cpp",
+            "*.cpp": "cpp",
+            "*.asm": "nasm",
+            "*.inc": "nasm"
+        },
+        "editor.rulers": [
+            80,
+            100
+        ],
+        "editor.formatOnSave": true,
+        "editor.insertSpaces": true,
+        "editor.tabSize": 4,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "C_Cpp.default.includePath": [
+            "${workspaceFolder}/**",
+            "${workspaceFolder}/kernel/**"
+        ],
+        "C_Cpp.default.defines": [
+            "__kernel__",
+            "__x86__"
+        ],
+        "C_Cpp.default.compilerPath": "/usr/bin/clang++",
+        "C_Cpp.default.intelliSenseMode": "clang-x86",
+        "C_Cpp.default.cppStandard": "c++17",
+        "search.exclude": {
+            "**/build": true,
+            "**/*.o": true,
+            "**/*.bin": true,
+            "**/*.iso": true
+        },
+        "files.watcherExclude": {
+            "**/build/**": true
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-vscode.cpptools",
+            "twxs.cmake",
+            "ms-vscode.cmake-tools",
+            "13xforever.language-x86-64-assembly",
+            "jeff-hykin.better-cpp-syntax",
+            "vadimcn.vscode-lldb",
+            "eamodio.gitlens"
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Build All",
+                "type": "shell",
+                "command": "./build.sh",
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                }
+            },
+            {
+                "label": "Clean",
+                "type": "shell",
+                "command": "./build.sh clean"
+            },
+            {
+                "label": "Run in QEMU",
+                "type": "shell",
+                "command": "./scripts/run.sh",
+                "dependsOn": ["Build All"]
+            },
+            {
+                "label": "Debug in QEMU",
+                "type": "shell",
+                "command": "./scripts/run.sh debug",
+                "dependsOn": ["Build All"]
+            }
+        ]
+    },
+    "launch": {
+        "configurations": [],
+        "compounds": []
+    }
+}

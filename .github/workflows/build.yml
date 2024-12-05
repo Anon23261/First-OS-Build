@@ -1,0 +1,50 @@
+name: Build OS
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Cache build dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          build/
+        key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y nasm clang lld qemu-system-x86 xorriso grub-pc-bin grub-common cmake make
+    
+    - name: Build OS
+      run: |
+        chmod +x ./build.sh
+        ./build.sh Release
+      
+    - name: Create ISO
+      run: ./build.sh Release iso
+      
+    - name: Test in QEMU
+      run: |
+        timeout 30s qemu-system-i386 -cdrom build/minios.iso -display none -serial stdio || code=$?; if [ $code -eq 124 ]; then exit 0; else exit $code; fi
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: os-image
+        path: |
+          build/*.iso
+          build/*.bin
+        if-no-files-found: error
