@@ -24,7 +24,10 @@ void editor_init() {
     E.cursor_x = 0;
     E.cursor_y = 0;
     E.filename = nullptr;
-    terminal_get_size(&E.screen_rows, &E.screen_cols);
+    size_t rows, cols;
+    terminal_get_size(&rows, &cols);
+    E.screen_rows = rows;
+    E.screen_cols = cols;
     if (E.screen_rows == 0) E.screen_rows = 24;
     if (E.screen_cols == 0) E.screen_cols = 80;
     E.screen_rows--; // Make room for status line
@@ -140,11 +143,11 @@ void editor_refresh_screen() {
     
     // Status line
     char status[80];
-    int len = snprintf(status, sizeof(status), "%.20s - %zu bytes %d,%d",
+    int len = snprintf(status, sizeof(status), "%.20s - %zu bytes %zu,%zu",
         E.filename ? E.filename : "[No Name]", 
         E.buffer_size,
-        (int)E.cursor_y + 1,
-        (int)E.cursor_x + 1);
+        E.cursor_y + 1,
+        E.cursor_x + 1);
     
     if (len > (int)E.screen_cols) len = E.screen_cols;
     

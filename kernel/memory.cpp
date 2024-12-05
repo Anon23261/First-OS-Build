@@ -123,6 +123,13 @@ size_t memory_get_total() {
 }
 
 size_t memory_get_free() {
-    // TODO: Implement actual free memory tracking
-    return 32 * 1024 * 1024; // Return 32MB for now
+    return HEAP_SIZE - sizeof(struct block_meta);
+}
+
+extern "C" void* memory_allocate(size_t size) {
+    return malloc(size);
+}
+
+extern "C" void memory_free(void* ptr) {
+    free(ptr);
 }

@@ -1,32 +1,6 @@
 #include "compiler.h"
 #include "memory.h"
-
-// Custom implementations for bare metal environment
-extern "C" {
-    void* memcpy(void* dest, const void* src, size_t n) {
-        char* d = (char*)dest;
-        const char* s = (const char*)src;
-        while (n--) *d++ = *s++;
-        return dest;
-    }
-
-    void* memset(void* dest, int val, size_t n) {
-        unsigned char* ptr = (unsigned char*)dest;
-        while (n--) *ptr++ = (unsigned char)val;
-        return dest;
-    }
-
-    int memcmp(const void* s1, const void* s2, size_t n) {
-        const unsigned char* p1 = (const unsigned char*)s1;
-        const unsigned char* p2 = (const unsigned char*)s2;
-        while (n--) {
-            if (*p1 != *p2) return *p1 - *p2;
-            p1++;
-            p2++;
-        }
-        return 0;
-    }
-}
+#include <string.h>
 
 // Simple assembly instruction structure
 struct Instruction {
@@ -46,6 +20,12 @@ enum OpCode {
     OP_RET = 0x07,
     OP_INT = 0x08
 };
+
+extern "C" {
+    void* memcpy(void* dest, const void* src, size_t n);
+    void* memset(void* dest, int val, size_t n);
+    int memcmp(const void* s1, const void* s2, size_t n);
+}
 
 static unsigned char* output_buffer = nullptr;
 static size_t output_size = 0;
@@ -153,7 +133,7 @@ bool execute_binary(const unsigned char* binary, size_t size) {
     if (!binary || size == 0) return false;
     
     // Create executable memory page
-    void* exec_mem = malloc(size);
+    void* exec_mem = memory_allocate(size);
     if (!exec_mem) return false;
     
     // Copy binary to executable memory
@@ -165,6 +145,6 @@ bool execute_binary(const unsigned char* binary, size_t size) {
     func();
     
     // Clean up
-    free(exec_mem);
+    memory_free(exec_mem);
     return true;
 }

@@ -12,6 +12,9 @@ extern "C" {
     extern void* memset(void* s, int c, size_t n);
 }
 
+// External functions
+extern void int_to_string(int value, char* str);
+
 // Global kernel state
 KernelState kernel_state = {
     .terminal_row = 0,
