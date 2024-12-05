@@ -1,136 +1,77 @@
 #include "string.h"
 
-size_t strlen(const char* str) {
-    size_t len = 0;
-    while (str[len]) len++;
-    return len;
-}
-
-void* memcpy(void* dest, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    const uint8_t* s = (const uint8_t*)src;
-    for (size_t i = 0; i < n; i++) {
-        d[i] = s[i];
+extern "C" {
+    size_t strlen(const char* str) {
+        size_t len = 0;
+        while (str[len]) len++;
+        return len;
     }
-    return dest;
-}
 
-void* memmove(void* dest, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    const uint8_t* s = (const uint8_t*)src;
-    if (d < s) {
-        for (size_t i = 0; i < n; i++) {
-            d[i] = s[i];
+    void* memset(void* s, int c, size_t n) {
+        unsigned char* p = (unsigned char*)s;
+        while (n--) *p++ = (unsigned char)c;
+        return s;
+    }
+
+    // Remove memcpy implementation since it's in memory.cpp
+    extern "C" void* memcpy(void* dest, const void* src, size_t count);
+
+    void* memmove(void* dest, const void* src, size_t n) {
+        unsigned char* d = (unsigned char*)dest;
+        const unsigned char* s = (const unsigned char*)src;
+        if (d < s) {
+            while (n--) *d++ = *s++;
+        } else {
+            d += n;
+            s += n;
+            while (n--) *--d = *--s;
         }
-    } else {
-        for (size_t i = n; i > 0; i--) {
-            d[i-1] = s[i-1];
+        return dest;
+    }
+
+    int memcmp(const void* s1, const void* s2, size_t n) {
+        const unsigned char* p1 = (const unsigned char*)s1;
+        const unsigned char* p2 = (const unsigned char*)s2;
+        while (n--) {
+            if (*p1 != *p2) return *p1 - *p2;
+            p1++;
+            p2++;
         }
+        return 0;
     }
-    return dest;
-}
 
-void* memset(void* dest, int val, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    for (size_t i = 0; i < n; i++) {
-        d[i] = (uint8_t)val;
+    char* strcpy(char* dest, const char* src) {
+        char* d = dest;
+        while ((*d++ = *src++));
+        return dest;
     }
-    return dest;
-}
 
-char* strncpy(char* dest, const char* src, size_t n) {
-    size_t i;
-    for (i = 0; i < n && src[i]; i++) {
-        dest[i] = src[i];
+    char* strncpy(char* dest, const char* src, size_t n) {
+        char* d = dest;
+        while (n-- && (*d++ = *src++));
+        while (n--) *d++ = '\0';
+        return dest;
     }
-    for (; i < n; i++) {
-        dest[i] = '\0';
-    }
-    return dest;
-}
 
-int strcmp(const char* s1, const char* s2) {
-    while (*s1 && *s1 == *s2) {
-        s1++;
-        s2++;
-    }
-    return (unsigned char)*s1 - (unsigned char)*s2;
-}
-
-int iscntrl(int c) {
-    return (c >= 0 && c < 32) || c == 127;
-}
-
-// Simple printf-style formatting
-int vsnprintf(char* str, size_t size, const char* format, va_list ap) {
-    if (size == 0) return 0;
-    
-    size_t pos = 0;
-    
-    while (*format && pos < size - 1) {
-        if (*format != '%') {
-            str[pos++] = *format++;
-            continue;
+    int strcmp(const char* s1, const char* s2) {
+        while (*s1 && *s1 == *s2) {
+            s1++;
+            s2++;
         }
-        
-        format++; // Skip '%'
-        
-        switch (*format) {
-            case 's': {
-                const char* s = va_arg(ap, const char*);
-                while (*s && pos < size - 1) {
-                    str[pos++] = *s++;
-                }
-                break;
-            }
-            case 'd': {
-                int num = va_arg(ap, int);
-                char buf[32];
-                int i = 0;
-                
-                if (num < 0) {
-                    str[pos++] = '-';
-                    num = -num;
-                }
-                
-                do {
-                    buf[i++] = '0' + (num % 10);
-                    num /= 10;
-                } while (num && i < 32);
-                
-                while (--i >= 0 && pos < size - 1) {
-                    str[pos++] = buf[i];
-                }
-                break;
-            }
-            case 'z': {
-                format++; // Skip 'u'
-                size_t num = va_arg(ap, size_t);
-                char buf[32];
-                int i = 0;
-                
-                do {
-                    buf[i++] = '0' + (num % 10);
-                    num /= 10;
-                } while (num && i < 32);
-                
-                while (--i >= 0 && pos < size - 1) {
-                    str[pos++] = buf[i];
-                }
-                break;
-            }
-        }
-        format++;
+        return *(unsigned char*)s1 - *(unsigned char*)s2;
     }
-    
-    str[pos] = '\0';
-    return pos;
-}
 
-int snprintf(char* str, size_t size, const char* format, ...) {
-    va_list ap;
-    va_start(ap, format);
-    int ret = vsnprintf(str, size, format, ap);
-    va_end(ap);
-    return ret;
+    char* strchr(const char* s, int c) {
+        while (*s && *s != (char)c) s++;
+        return (*s == (char)c) ? (char*)s : nullptr;
+    }
+
+    char* strdup(const char* s) {
+        size_t len = strlen(s) + 1;
+        char* new_str = (char*)malloc(len);
+        if (new_str) {
+            memcpy(new_str, s, len);
+        }
+        return new_str;
+    }
 }

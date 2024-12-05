@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "io.h"
 
 // Interrupt numbers
 #define IRQ0 32
@@ -29,23 +30,27 @@ struct registers {
     uint32_t int_no, err_code;
     uint32_t eip, cs, eflags, useresp, ss;
 };
-typedef struct registers registers_t;
 
-// Function pointer type for interrupt handlers
-typedef void (*isr_t)(registers_t*);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-// Interrupt management functions
-bool interrupts_initialize(void);
-void register_interrupt_handler(uint8_t n, isr_t handler);
-void unregister_interrupt_handler(uint8_t n);
+// Assembly functions
+extern "C" void idt_load(struct idt_ptr* ptr);
+extern "C" void isr0();
+extern "C" void isr1();
+extern "C" void irq0();
+extern "C" void irq1();
 
-// Enable/disable interrupts
-static inline void enable_interrupts(void) {
-    asm volatile("sti");
+// C handlers
+void isr_handler(struct registers* regs);
+void irq_handler(struct registers* regs);
+
+// Initialization
+void interrupts_init();
+
+#ifdef __cplusplus
 }
-
-static inline void disable_interrupts(void) {
-    asm volatile("cli");
-}
+#endif
 
 #endif

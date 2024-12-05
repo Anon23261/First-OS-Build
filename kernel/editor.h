@@ -3,40 +3,35 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "keyboard.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // Editor configuration
-#define EDITOR_VERSION "1.0.0"
-#define TAB_STOP 8
-#define QUIT_TIMES 3
-
-// Control key macro (different from keyboard.h KEY_CTRL)
-#define EDITOR_CTRL(k) ((k) & 0x1F)
-
-// Editor data structure
-typedef struct {
-    size_t cursor_x;
-    size_t cursor_y;
-    size_t screen_rows;
-    size_t screen_cols;
-    size_t row_offset;
-    size_t col_offset;
-    char* filename;
+struct EditorConfig {
     char* buffer;
     size_t buffer_size;
+    char* filename;
+    size_t screen_rows;
+    size_t screen_cols;
+    size_t cursor_x;
+    size_t cursor_y;
+    size_t row_offset;
+    size_t col_offset;
     char status_msg[80];
-    uint32_t status_msg_time;
-} EditorConfig;
+    uint64_t status_msg_time;
+};
 
-// Function declarations
-void editor_init();
-void editor_process_keypress();
-void editor_refresh_screen();
-void editor_set_status_message(const char* fmt, ...);
+// Editor functions
+void editor_init(void);
+void editor_refresh_screen(void);
 void editor_open(const char* filename);
-void editor_save();
 void editor_insert_char(char c);
-void editor_delete_char();
-void editor_move_cursor(int key);
+void editor_process_keypress(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // EDITOR_H

@@ -1,13 +1,15 @@
 # Compiler and tools
-CXX = i686-elf-g++
+CXX = g++
+CC = gcc
 AS = nasm
 GRUB_MKRESCUE = grub-mkrescue
-LD = i686-elf-ld
+LD = ld
 
 # Compiler and linker flags
-CXXFLAGS = -ffreestanding -O2 -Wall -Wextra -fno-exceptions -fno-rtti -g -I$(KERNEL_DIR)
+CXXFLAGS = -m32 -ffreestanding -O2 -Wall -Wextra -fno-exceptions -fno-rtti -g -I$(KERNEL_DIR)
+CFLAGS = -m32 -ffreestanding -O2 -Wall -Wextra -g -I$(KERNEL_DIR)
 ASFLAGS = -f elf32
-LDFLAGS = -T linker.ld -ffreestanding -O2 -nostdlib -lgcc
+LDFLAGS = -T linker.ld -m elf_i386 -nostdlib /usr/lib/gcc/i686-linux-gnu/10/libgcc.a
 
 # Directories
 BOOT_DIR = boot
@@ -17,16 +19,23 @@ ISO_DIR = $(BUILD_DIR)/iso
 
 # Source files
 BOOT_SOURCES = $(wildcard $(BOOT_DIR)/*.asm)
-KERNEL_SOURCES = $(wildcard $(KERNEL_DIR)/*.cpp)
+KERNEL_ASM_SOURCES = $(KERNEL_DIR)/isr.asm
+KERNEL_CPP_SOURCES = $(wildcard $(KERNEL_DIR)/*.cpp)
+KERNEL_C_SOURCES = $(wildcard $(KERNEL_DIR)/*.c)
+
+# Object files
 BOOT_OBJECTS = $(patsubst $(BOOT_DIR)/%.asm,$(BUILD_DIR)/%.o,$(BOOT_SOURCES))
-KERNEL_OBJECTS = $(patsubst $(KERNEL_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(KERNEL_SOURCES))
+KERNEL_ASM_OBJECTS = $(BUILD_DIR)/isr.o
+KERNEL_CPP_OBJECTS = $(patsubst $(KERNEL_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(KERNEL_CPP_SOURCES))
+KERNEL_C_OBJECTS = $(patsubst $(KERNEL_DIR)/%.c,$(BUILD_DIR)/%.o,$(KERNEL_C_SOURCES))
+KERNEL_OBJECTS = $(KERNEL_ASM_OBJECTS) $(KERNEL_CPP_OBJECTS) $(KERNEL_C_OBJECTS)
 
 # Output files
 KERNEL_BIN = $(BUILD_DIR)/MiniOS.bin
 ISO_FILE = $(BUILD_DIR)/MiniOS.iso
 
 # Check for required tools
-REQUIRED_TOOLS = $(CXX) $(AS) $(GRUB_MKRESCUE)
+REQUIRED_TOOLS = $(CXX) $(CC) $(AS) $(GRUB_MKRESCUE)
 
 .PHONY: all clean check-tools run debug
 
@@ -34,54 +43,39 @@ all: check-tools $(ISO_FILE)
 
 check-tools:
 	@for tool in $(REQUIRED_TOOLS); do \
-		if ! command -v $$tool >/dev/null 2>&1; then \
-			echo "Error: Required tool '$$tool' is not installed."; \
-			exit 1; \
-		fi \
+		which $$tool >/dev/null 2>&1 || { echo "$$tool not found. Please install it."; exit 1; } \
 	done
 
-# Create build directories
-$(BUILD_DIR):
+$(BUILD_DIR)/%.o: $(BOOT_DIR)/%.asm
 	@mkdir -p $(BUILD_DIR)
-	@mkdir -p $(ISO_DIR)/boot/grub
+	$(AS) $(ASFLAGS) $< -o $@
 
-# Compile assembly files
-$(BUILD_DIR)/%.o: $(BOOT_DIR)/%.asm | $(BUILD_DIR)
-	@echo "Assembling $<..."
-	@$(AS) $(ASFLAGS) $< -o $@
+$(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.asm
+	@mkdir -p $(BUILD_DIR)
+	$(AS) $(ASFLAGS) $< -o $@
 
-# Compile C++ files
-$(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.cpp | $(BUILD_DIR)
-	@echo "Compiling $<..."
-	@$(CXX) $(CXXFLAGS) -c $< -o $@
+$(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.cpp
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Link the kernel
+$(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(KERNEL_BIN): $(BOOT_OBJECTS) $(KERNEL_OBJECTS)
-	@echo "Linking kernel..."
-	@$(CXX) -T linker.ld -o $@ $(BOOT_OBJECTS) $(KERNEL_OBJECTS) $(LDFLAGS)
-	@echo "Kernel binary created at $@"
+	$(LD) $(LDFLAGS) -o $@ $^
 
-# Create bootable ISO
 $(ISO_FILE): $(KERNEL_BIN)
-	@echo "Creating bootable ISO..."
 	@mkdir -p $(ISO_DIR)/boot/grub
-	@cp $(KERNEL_BIN) $(ISO_DIR)/boot/
-	@cp grub.cfg $(ISO_DIR)/boot/grub/
-	@$(GRUB_MKRESCUE) -o $@ $(ISO_DIR)
-	@echo "ISO created at $@"
+	cp $(KERNEL_BIN) $(ISO_DIR)/boot/
+	cp grub.cfg $(ISO_DIR)/boot/grub/
+	$(GRUB_MKRESCUE) -o $@ $(ISO_DIR)
 
-# Clean build files
 clean:
-	@echo "Cleaning build files..."
-	@rm -rf $(BUILD_DIR)
-	@echo "Clean complete"
+	rm -rf $(BUILD_DIR)
 
-# Run in QEMU
 run: $(ISO_FILE)
-	@echo "Running MiniOS in QEMU..."
-	@qemu-system-i386 -cdrom $(ISO_FILE)
+	qemu-system-i386 -cdrom $(ISO_FILE)
 
-# Debug with QEMU and GDB
 debug: $(ISO_FILE)
-	@echo "Starting MiniOS in debug mode..."
-	@qemu-system-i386 -cdrom $(ISO_FILE) -s -S
+	qemu-system-i386 -cdrom $(ISO_FILE) -s -S

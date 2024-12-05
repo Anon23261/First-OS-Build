@@ -30,8 +30,16 @@ KERNEL_DATA_SEG equ 0x10
 section .text
 global _start
 extern kernel_main
-extern _init
-extern _fini
+
+; Add dummy _init and _fini functions
+global _init
+global _fini
+
+_init:
+    ret
+
+_fini:
+    ret
 
 ; Error handling macro
 %macro HALT_WITH_ERROR 0
