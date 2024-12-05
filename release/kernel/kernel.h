@@ -1,14 +1,8 @@
 #ifndef KERNEL_H
 #define KERNEL_H
 
-#include <stdint.h>
 #include <stddef.h>
-#include "multiboot.h"
-
-// VGA text mode constants
-#define VGA_WIDTH 80
-#define VGA_HEIGHT 25
-#define VGA_MEMORY 0xB8000
+#include <stdint.h>
 
 // VGA colors
 enum vga_color {
@@ -30,57 +24,34 @@ enum vga_color {
     VGA_COLOR_WHITE = 15,
 };
 
-// Port I/O functions
-static inline void outb(uint16_t port, uint8_t val) {
-    asm volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
-}
-
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    asm volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
-}
-
-// Terminal functions
-static inline uint8_t make_color(enum vga_color fg, enum vga_color bg) {
-    return fg | bg << 4;
-}
-
-static inline uint16_t make_vgaentry(char c, uint8_t color) {
-    uint16_t c16 = c;
-    uint16_t color16 = color;
-    return c16 | color16 << 8;
-}
-
-void terminal_initialize(void);
-void terminal_putchar(char c);
-void terminal_write(const char* data, size_t size);
-void terminal_writestring(const char* data);
-void terminal_setcolor(uint8_t color);
-void terminal_movecursor(size_t x, size_t y);
-void terminal_clear(void);
+// Terminal dimensions
+#define VGA_WIDTH 80
+#define VGA_HEIGHT 25
+#define VGA_MEMORY 0xB8000
 
 // Kernel state structure
-struct KernelState {
-    bool vga_initialized;
-    bool keyboard_initialized;
-    bool filesystem_initialized;
-    bool editor_initialized;
-    bool memory_initialized;
-    bool interrupts_initialized;
-    uint16_t* vga_buffer;
+typedef struct {
     size_t terminal_row;
     size_t terminal_column;
     uint8_t terminal_color;
-    const multiboot_info_t* multiboot_info;
-    uint32_t total_memory;
-    uint32_t free_memory;
-};
+    uint16_t* terminal_buffer;
+    bool is_initialized;
+} KernelState;
 
-// External declarations
-extern KernelState kernel_state;
-extern "C" void kernel_main(multiboot_info_t* mbi);
-void kernel_panic(const char* message) __attribute__((noreturn));
-bool init_subsystems(const multiboot_info_t* mbi);
+// Function declarations
+void kernel_init(void);
+void kernel_main(void);
+void terminal_init(void);
+void terminal_clear(void);
+void terminal_set_color(enum vga_color fg, enum vga_color bg);
+void terminal_write_char(char c);
+void terminal_write(const char* data, size_t size);
+void terminal_write_string(const char* data);
+void terminal_new_line(void);
+void terminal_backspace(void);
+void terminal_get_size(size_t* rows, size_t* cols);
+uint32_t kernel_get_ticks(void);
 
-#endif /* KERNEL_H */
+[[noreturn]] void kernel_panic(const char* message);
+
+#endif // KERNEL_H
