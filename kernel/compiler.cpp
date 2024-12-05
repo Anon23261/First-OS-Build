@@ -133,7 +133,7 @@ CompileResult compile_code(const char* source, size_t length) {
     
     // Allocate space for final binary
     result.binary_size = instruction_count * sizeof(Instruction);
-    result.binary = memory_allocate(result.binary_size);
+    result.binary = (unsigned char*)memory_allocate(result.binary_size);
     if (!result.binary) {
         memcpy(result.error_message, "Failed to allocate memory for final binary", 40);
         memory_free(instructions);
