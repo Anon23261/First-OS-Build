@@ -160,4 +160,4 @@ gdb
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Version
-Current version: 1.0.0
+Current version: 2.0.1
